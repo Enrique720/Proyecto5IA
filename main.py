@@ -1,54 +1,186 @@
-import tensorflow as tf
+import torch
+from torch import optim
+import torch.nn as nn
+from torch.nn.modules.activation import ReLU
+import torchvision
+import torchvision.transforms as transform
+import torch.nn.functional as F
 
-from tensorflow.keras import datasets, layers, models
 import matplotlib.pyplot as plt
+import numpy as np
+import math
+from db import get_imgs,process_image,process_image2
+from sklearn.model_selection import train_test_split
 
-(train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
+# Imagen: 2835 x 3543 todas 
+#224 
+class CNN(nn.Module):
+  def __init__(self):
+    super(CNN, self).__init__()
+    self.conv1 = nn.Sequential(
+                                nn.Conv2d(in_channels=3, out_channels=8, kernel_size=5, stride=1, padding=1),
+                                nn.ReLU(),
+                                nn.MaxPool2d(kernel_size=4,stride=2)
+    )
+    self.conv2 = nn.Sequential(
+                                nn.Conv2d(in_channels=8, out_channels=16, kernel_size=5, stride=1, padding=1),
+                                nn.ReLU(),
+                                nn.MaxPool2d(kernel_size=4,stride=2)
+    )
+    self.conv3 = nn.Sequential(
+                                 nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=1),
+                                 nn.ReLU(),
+                                 nn.MaxPool2d(kernel_size=4,stride=2)
+    )
+    self.conv4 = nn.Sequential(
+                                 nn.Conv2d(in_channels=32, out_channels=64, kernel_size=5, stride=1, padding=1),
+                                 nn.ReLU(),
+                                 nn.MaxPool2d(kernel_size=4,stride=2)
+    )
+    self.conv5 = nn.Sequential(
+                                 nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, stride=1, padding=1),
+                                 nn.ReLU(),
+                                 nn.MaxPool2d(kernel_size=4,stride=2)
+    )
+    self.fc = nn.Sequential(
+                              nn.Linear(in_features=128*3*4, out_features=768),
+                              nn.ReLU(),
+                              nn.Linear(in_features=768, out_features=384),
+                              nn.ReLU(),
+                              nn.Linear(in_features=384, out_features=192),
+                              nn.ReLU(),
+                              nn.Linear(in_features=192, out_features=96),
+                              nn.ReLU(),
+                              nn.Linear(in_features=96, out_features=48),
+                              nn.ReLU(),
+                              nn.Linear(in_features=48, out_features=6),
+                              #nn.Sigmoid(),
+                              nn.Softmax(),
+    )
+    
 
-# Normalize pixel values to be between 0 and 1
-train_images, test_images = train_images / 255.0, test_images / 255.0
 
-class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-               'dog', 'frog', 'horse', 'ship', 'truck']
+    # self.conv2 = nn.Conv2d(in_channels=64, out_channels=64*2, kernel_size=4, stride=3, padding=1)
+    # self.conv3 = nn.Conv2d(in_channels=64*2, out_channels=64*2*2, kernel_size=4, stride=2, padding=2)
+    # self.fc = nn.Linear(in_features=64*2*2*158*198, out_features=6)
 
-plt.figure(figsize=(10,10))
-for i in range(25):
-    plt.subplot(5,5,i+1)
-    plt.xticks([])
-    plt.yticks([])
-    plt.grid(False)
-    plt.imshow(train_images[i])
-    # The CIFAR labels happen to be arrays, 
-    # which is why you need the extra index
-    plt.xlabel(class_names[train_labels[i][0]])
-plt.show()
+    # self.layer1 = nn.Sequential(
+    #         nn.Conv2d(in_channels=1, out_channels=16, kernel_size=3, stride=1, padding=2),
+    #         nn.ReLU(),
+    #         nn.MaxPool2d(kernel_size=2, stride=2))
+    #     self.layer2 = nn.Sequential(
+    #         nn.Conv2d(16, 32, kernel_size=5, stride=1, padding=2),
+    #         nn.ReLU(),
+    #         nn.MaxPool2d(kernel_size=2, stride=2))
+    #     self.fc = nn.Linear(7*7*32, num_classes)
+        
+
+  def forward(self, image):
+    out = self.conv1(image)
+    #print(out.shape)
+    
+    out = self.conv2(out)
+    #print(out.shape)
+
+    out = self.conv3(out)
+    #print(out.shape)
+
+    out = self.conv4(out)
+    #print(out.shape)
+
+    out = self.conv5(out)
+    #print(out.shape)
+
+    
+
+    out = out.reshape(out.size(0), -1)
+    out = self.fc(out)
+    #print("3", out.shape)
+    
+    # out = out.view(out.size(0), -1)
+    return out
 
 
-model = models.Sequential()
-model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(32, 32, 3)))
-model.add(layers.MaxPooling2D((2, 2)))
-model.add(layers.Conv2D(64, (3, 3), activation='relu'))
-model.add(layers.MaxPooling2D((2, 2)))
-model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+batch_size = 8
 
-model.add(layers.Flatten())
-model.add(layers.Dense(64, activation='relu'))
-model.add(layers.Dense(10))
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#print(device)
 
-model.compile(optimizer='adam',
-              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-              metrics=['accuracy'])
+imgs =get_imgs()
+img_train,img_test = train_test_split(imgs, test_size=0.3, random_state=42,shuffle=True)
 
-history = model.fit(train_images, train_labels, epochs=10, 
-                    validation_data=(test_images, test_labels))
+train_loader = torch.utils.data.DataLoader(dataset=img_train, batch_size=batch_size, shuffle=True)
+#test_loader = torch.utils.data.DataLoader(dataset=imgs, batch_size=batch_size, shuffle=False)
 
-plt.plot(history.history['accuracy'], label='accuracy')
-plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
-plt.xlabel('Epoch')
-plt.ylabel('Accuracy')
-plt.ylim([0.5, 1])
-plt.legend(loc='lower right')
+def test(model,filenames):
+  with torch.no_grad(): 
+    goods = 0
+    bads = 0
+    for filename in filenames:
+      image,labels = process_image2(filename)
+      image = image.unsqueeze(0) #[3][2000][3000]
+      image = image.to(device)
+      labels = labels.unsqueeze(0)
+      labels = labels.to(device)
+      output = model(image)
+      output_label = torch.argmax(output)
+      if(output_label == labels):
+        goods +=1
+      else:
+        bads +=1
+    print("goods are: ",goods)
+    print("bads are: ",bads)
+  
+def train(model, optimizer, loss_fn, num_epochs):
+  
+  loss_vals = []
+  running_loss =0.0
+  # train the model
 
-test_loss, test_acc = model.evaluate(test_images,  test_labels, verbose=2)
+  list_loss= []
+  list_time = []
+  j=0
 
-print(test_acc)
+  for epoch in range(num_epochs):
+    filenames = next(iter(train_loader))
+    i =0          
+    for i,filenames in enumerate(train_loader):
+      for filename in filenames:
+        image,labels = process_image2(filename)
+        image = image.unsqueeze(0) #[3][2000][3000]
+        image =image.to(device)
+        labels = labels.unsqueeze(0)
+        labels = labels.to(device)
+        #print(labels.shape)
+        # forward 
+        output = model(image)
+        #print(output)
+        #print(labels )
+        print(output)
+        print(labels)
+        loss   = loss_fn(output, labels)
+        # change the params
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()  
+        list_loss.append(loss.item())
+        list_time.append(j)
+        j+=1
+      if (i+1) % 1 == 0:
+        print ('Epoch [{}/{}], Loss: {:.4f}' 
+                    .format(epoch+1, num_epochs,loss.item()))
+              
+  print('Finished Training Trainset')
+  return list_loss
+  
+learning_rate = 0.0001
+epochs = 40
+cnn = CNN().to(device)
+loss = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(params=cnn.parameters(), lr=learning_rate)
+
+#print(data.shape)
+#print(cnn(data))
+train(cnn,optimizer,loss,epochs)
+test(cnn,img_test)
+
