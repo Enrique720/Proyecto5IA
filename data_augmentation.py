@@ -54,7 +54,7 @@ for imgs in images:
     datagen = ImageDataGenerator(zoom_range=[0.5, 1.0])
     it = datagen.flow(samples, batch_size=1)
 
-    for i in range(3): 
+    for i in range(9): 
         #pyplot.subplot(300+1+i)
         batch = it.next()
         image = batch[0].astype('uint8')
